@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"sync"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -62,6 +63,12 @@ type GroupReconciler struct {
 	backendLogger   *logrus.Entry
 	LdapConn        ldap.LDAPClient
 	allLdapUserData map[string]*structs.LDAPUser
+
+	// CacheMutex prevents concurrent access to the cache during group reconciliation.
+	// This shared mutex ensures that the group controller and user offboarding job don't interfere
+	// with each other when reading or modifying user/team data in Redis.
+	// This mutex is shared across components and passed from main.go.
+	CacheMutex *sync.RWMutex
 }
 
 //nolint:lll
@@ -138,8 +145,42 @@ func (r *GroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	r.log.Info("fetching LDAP data for the users in the group")
 
+	// Lock cache for read/write operations during reconciliation
+	r.CacheMutex.Lock()
+	defer r.CacheMutex.Unlock()
+
+	r.log.Info("Acquired cache lock for group reconciliation operations")
+
 	// fetch all the data from LDAP for the users in the group
 	r.allLdapUserData = make(map[string]*structs.LDAPUser, 0)
+	userList := make([]string, 0)
+	userListCache, err := r.Cache.Get(ctx, "user_list")
+	if err != nil {
+		r.log.WithError(err).Debug("user list not found in cache, will start with empty list")
+		// Continue with empty userList - no need to unmarshal
+	} else {
+		// Successfully retrieved from cache, now try to unmarshal
+		r.log.WithField("user_list", userListCache).Debug("cached user list as JSON string")
+		userListStr, ok := userListCache.(string)
+		if !ok {
+			r.log.Error("user list cache data is not a string, starting with empty list")
+		} else if err := json.Unmarshal([]byte(userListStr), &userList); err != nil {
+			r.log.WithError(err).Error("corrupted user list data in cache, invalidating and starting fresh")
+			userList = make([]string, 0)
+
+			// Invalidate the corrupted cache entry
+			if deleteErr := r.Cache.Delete(ctx, "user_list"); deleteErr != nil {
+				r.log.WithError(deleteErr).Warn("failed to delete corrupted user_list from cache")
+			}
+		}
+	}
+
+	// Use a map to track unique UIDs to avoid duplicates
+	uniqueUIDs := make(map[string]bool)
+	for _, uid := range userList {
+		uniqueUIDs[uid] = true
+	}
+
 	for _, user := range uniqueMembers {
 		ldapUserData, err := r.LdapConn.GetUserLDAPData(ctx, user)
 		if err != nil {
@@ -155,6 +196,21 @@ func (r *GroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		}
 
 		r.allLdapUserData[user] = ldapUser
+
+		// Only add UID if it's not already in the list
+		if !uniqueUIDs[ldapUser.GetUID()] {
+			userList = append(userList, ldapUser.GetUID())
+			uniqueUIDs[ldapUser.GetUID()] = true
+		}
+	}
+
+	userListJSON, err := json.Marshal(userList)
+	if err != nil {
+		r.log.WithError(err).Error("error marshaling user list to JSON")
+	}
+
+	if err := r.Cache.Set(ctx, "user_list", string(userListJSON), cache.NoExpiration); err != nil {
+		r.log.WithError(err).Error("error updating user list in cache")
 	}
 
 	backendErrors := make(map[string]string, 0)

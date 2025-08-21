@@ -76,6 +76,27 @@ func (rc *RedisCache) Get(ctx context.Context, key string) (interface{}, error) 
 	return val, nil
 }
 
+func (rc *RedisCache) GetByPattern(ctx context.Context, keyPattern string) (map[string]interface{}, error) {
+	values := make(map[string]interface{})
+	iter := rc.client.WithContext(ctx).Scan(0, keyPattern, 0).Iterator()
+	for iter.Next() {
+		key := iter.Val()
+		val, err := rc.client.WithContext(ctx).Get(key).Result()
+		if err != nil {
+			if err == redis.Nil {
+				// Key might have expired between SCAN and GET, so we can safely ignore it.
+				continue
+			}
+			return nil, err
+		}
+		values[key] = val
+	}
+	if err := iter.Err(); err != nil {
+		return nil, err
+	}
+	return values, nil
+}
+
 // Delete - deletes a key from redis
 func (rc *RedisCache) Delete(ctx context.Context, key string) error {
 	err := rc.client.WithContext(ctx).Del(key).Err()

@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"flag"
 	"os"
+	"sync"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -191,14 +192,28 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create shared cache mutex to prevent race conditions between GroupReconciler and UserOffboardingJob
+	sharedCacheMutex := &sync.RWMutex{}
+
 	if err = (&controller.GroupReconciler{
-		Client:    mgr.GetClient(),
-		Scheme:    mgr.GetScheme(),
-		AppConfig: appConf,
-		Cache:     cache,
-		LdapConn:  ldapConn,
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		AppConfig:  appConf,
+		Cache:      cache,
+		LdapConn:   ldapConn,
+		CacheMutex: sharedCacheMutex,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Group")
+		os.Exit(1)
+	}
+
+	ptr, err := controller.NewPeriodicTasksReconciler(mgr.GetClient(), sharedCacheMutex, cache)
+	if err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PeriodicTasks")
+		os.Exit(1)
+	}
+	if err = ptr.AddToManager(mgr); err != nil {
+		setupLog.Error(err, "unable to add controller to manager", "controller", "PeriodicTasks")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
