@@ -5,11 +5,11 @@ metadata:
     app.kubernetes.io/name: usernaut
     app.kubernetes.io/managed-by: kustomize
   name: platformadmin-group
+  namespace: usernaut
 spec:
-  group_name: platformadmin-group
+  group_name: dataverse-aggregate-mygroup
   members:
-  - user1
-  - user2
+  - subhatta
   backends:
   - name: fivetran
     type: fivetran

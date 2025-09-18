@@ -421,6 +421,10 @@ func (uoj *UserOffboardingJob) isUserActiveInLDAP(ctx context.Context, userID st
 			// User not found in LDAP means they're inactive
 			return false, nil
 		}
+		// Handle LDAP "No Such Object" error as user not found
+		if strings.Contains(err.Error(), "No Such Object") {
+			return false, nil
+		}
 		// Other errors should be returned as is
 		return false, err
 	}
@@ -529,10 +533,11 @@ func (uoj *UserOffboardingJob) removeUserFromUserList(ctx context.Context, userI
 		return fmt.Errorf("failed to unmarshal user list: %w", err)
 	}
 
-	// Remove the user from the list
+	// Remove the user from the list (compare with full cache key)
+	userCacheKey := UserCacheKeyPrefix + userID
 	updatedUserList := make([]string, 0, len(userList))
 	for _, user := range userList {
-		if user != userID {
+		if user != userCacheKey {
 			updatedUserList = append(updatedUserList, user)
 		}
 	}
