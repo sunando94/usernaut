@@ -28,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	goldap "github.com/go-ldap/ldap/v3"
 	"github.com/redhat-data-and-ai/usernaut/pkg/cache"
 	"github.com/redhat-data-and-ai/usernaut/pkg/clients"
 	"github.com/redhat-data-and-ai/usernaut/pkg/clients/ldap"
@@ -80,9 +81,6 @@ type UserOffboardingJob struct {
 //   - Initializes cache and LDAP clients
 //   - Sets up all enabled backend clients
 //   - Returns a fully configured job ready for execution
-//
-// Parameters:
-//   - snowflakeEnvironment: The Snowflake environment identifier for this job instance
 //
 // Parameters:
 //   - sharedCacheMutex: Shared mutex to prevent race conditions with other components
@@ -412,8 +410,8 @@ func (uoj *UserOffboardingJob) isUserActiveInLDAP(ctx context.Context, userID st
 			// User not found in LDAP means they're inactive
 			return false, nil
 		}
-		// Handle LDAP "No Such Object" error as user not found
-		if strings.Contains(err.Error(), "No Such Object") {
+		// Handle LDAP "No Such Object" error using proper typed error checking
+		if ldapErr, ok := err.(*goldap.Error); ok && ldapErr.ResultCode == goldap.LDAPResultNoSuchObject {
 			return false, nil
 		}
 		// Other errors should be returned as is
