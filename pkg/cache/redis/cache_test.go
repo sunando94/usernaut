@@ -85,7 +85,7 @@ func TestRedisCacheGetByPattern(t *testing.T) {
 	assert.Equal(t, 3, len(values))
 
 	// Convert to string slice for easier comparison
-	var stringValues []string
+	stringValues := make([]string, 0, len(values))
 	for _, v := range values {
 		stringValues = append(stringValues, v.(string))
 	}

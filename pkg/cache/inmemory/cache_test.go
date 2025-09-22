@@ -102,13 +102,13 @@ func TestInMemoryCacheGetByPattern(t *testing.T) {
 	values, err := mem.GetByPattern(context.Background(), "user:*")
 	assert.Nil(t, err)
 	assert.Equal(t, 3, len(values))
-	
+
 	// Convert to string slice for easier comparison
-	var stringValues []string
+	stringValues := make([]string, 0, len(values))
 	for _, v := range values {
 		stringValues = append(stringValues, v.(string))
 	}
-	
+
 	// Check that all user values are present
 	assert.Contains(t, stringValues, "value1")
 	assert.Contains(t, stringValues, "value2")
@@ -120,4 +120,3 @@ func TestInMemoryCacheGetByPattern(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, 0, len(values))
 }
-

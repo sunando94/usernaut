@@ -6,6 +6,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/redhat-data-and-ai/usernaut/internal/controller/periodicjobs"
+	"github.com/redhat-data-and-ai/usernaut/pkg/cache"
+	"github.com/redhat-data-and-ai/usernaut/pkg/cache/inmemory"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
@@ -26,9 +28,21 @@ var _ = Describe("PeriodicTasks Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("creating a new PeriodicTasksReconciler with an empty task manager")
+			// Create a test cache for the reconciler
+			cacheConfig := cache.Config{
+				Driver: "memory",
+				InMemory: &inmemory.Config{
+					DefaultExpiration: int32(-1),
+					CleanupInterval:   int32(-1),
+				},
+			}
+			testCache, err := cache.New(&cacheConfig)
+			Expect(err).NotTo(HaveOccurred())
+
 			reconciler := &PeriodicTasksReconciler{
 				Client:      k8sClient,
 				taskManager: periodicjobs.NewPeriodicTaskManager(), // Empty task manager
+				cacheClient: testCache,
 			}
 			Expect(reconciler).NotTo(BeNil())
 
