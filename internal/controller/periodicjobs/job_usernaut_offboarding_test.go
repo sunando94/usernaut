@@ -93,16 +93,17 @@ func (suite *UserOffboardingJobTestSuite) SetupTest() {
 
 	suite.testUserKey = suite.vinodUser.UserName
 
-	// Create UserOffboardingJob with real dependencies
+	// Create UserOffboardingJob with real dependencies using the new constructor
 	sharedCacheMutex := &sync.RWMutex{}
-	suite.job = &UserOffboardingJob{
-		cacheClient: suite.cacheClient,
-		ldapClient:  suite.ldapClient,
-		backendClients: map[string]clients.Client{
-			"fivetran_fivetran": suite.fivetranClient,
-		},
-		cacheMutex: sharedCacheMutex,
+	backendClients := map[string]clients.Client{
+		"fivetran_fivetran": suite.fivetranClient,
 	}
+	suite.job = NewUserOffboardingJob(
+		sharedCacheMutex,
+		suite.cacheClient,
+		suite.ldapClient,
+		backendClients,
+	)
 }
 
 // TearDownTest runs after each test

@@ -31,7 +31,6 @@ import (
 	"github.com/redhat-data-and-ai/usernaut/pkg/cache"
 	"github.com/redhat-data-and-ai/usernaut/pkg/clients"
 	"github.com/redhat-data-and-ai/usernaut/pkg/clients/ldap"
-	"github.com/redhat-data-and-ai/usernaut/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -87,48 +86,24 @@ type UserOffboardingJob struct {
 //
 // Parameters:
 //   - sharedCacheMutex: Shared mutex to prevent race conditions with other components
+//   - cacheClient: Shared cache client instance
+//   - ldapClient: Shared LDAP client instance
+//   - backendClients: Map of initialized backend clients
 //
 // Returns:
 //   - *UserOffboardingJob: A configured job instance
-//   - error: Any initialization error encountered
-func NewUserOffboardingJob(sharedCacheMutex *sync.RWMutex) (*UserOffboardingJob, error) {
-	// Get application configuration
-	appConfig, err := config.GetConfig()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get config: %w", err)
-	}
-
-	// Initialize cache client
-	cacheClient, err := cache.New(&appConfig.Cache)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize cache: %w", err)
-	}
-
-	// Initialize LDAP client
-	ldapClient, err := ldap.InitLdap(appConfig.LDAP)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize LDAP client: %w", err)
-	}
-
-	// Initialize backend clients
-	backendClients := make(map[string]clients.Client)
-	for _, backend := range appConfig.Backends {
-		if backend.Enabled {
-			client, err := clients.New(backend.Name, backend.Type, appConfig.BackendMap)
-			if err != nil {
-				return nil, fmt.Errorf("failed to initialize backend client %s/%s: %w",
-					backend.Type, backend.Name, err)
-			}
-			backendClients[fmt.Sprintf("%s_%s", backend.Name, backend.Type)] = client
-		}
-	}
-
+func NewUserOffboardingJob(
+	sharedCacheMutex *sync.RWMutex,
+	cacheClient cache.Cache,
+	ldapClient ldap.LDAPClient,
+	backendClients map[string]clients.Client,
+) *UserOffboardingJob {
 	return &UserOffboardingJob{
 		cacheClient:    cacheClient,
 		ldapClient:     ldapClient,
 		backendClients: backendClients,
 		cacheMutex:     sharedCacheMutex,
-	}, nil
+	}
 }
 
 // AddToPeriodicTaskManager registers this job with the provided periodic task manager.

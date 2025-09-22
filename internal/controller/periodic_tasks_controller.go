@@ -8,6 +8,8 @@ import (
 
 	"github.com/redhat-data-and-ai/usernaut/internal/controller/periodicjobs"
 	"github.com/redhat-data-and-ai/usernaut/pkg/cache"
+	"github.com/redhat-data-and-ai/usernaut/pkg/clients"
+	"github.com/redhat-data-and-ai/usernaut/pkg/clients/ldap"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -24,15 +26,18 @@ func NewPeriodicTasksReconciler(
 	k8sClient client.Client,
 	sharedCacheMutex *sync.RWMutex,
 	cacheClient cache.Cache,
+	ldapClient ldap.LDAPClient,
+	backendClients map[string]clients.Client,
 ) (*PeriodicTasksReconciler, error) {
 	periodicTaskManager := periodicjobs.NewPeriodicTaskManager()
 
 	// Add jobs to the periodic task manager
-	userOffboardingJob, err := periodicjobs.NewUserOffboardingJob(sharedCacheMutex)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to create user offboarding job: %w", err)
-	}
+	userOffboardingJob := periodicjobs.NewUserOffboardingJob(
+		sharedCacheMutex,
+		cacheClient,
+		ldapClient,
+		backendClients,
+	)
 	userOffboardingJob.AddToPeriodicTaskManager(periodicTaskManager)
 
 	return &PeriodicTasksReconciler{
