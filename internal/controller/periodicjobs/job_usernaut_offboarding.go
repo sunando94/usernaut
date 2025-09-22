@@ -356,6 +356,8 @@ func (uoj *UserOffboardingJob) getUserListFromCache(ctx context.Context) ([]stri
 func (uoj *UserOffboardingJob) getUserDataFromCache(
 	ctx context.Context, userKey string,
 ) (map[string]string, string, error) {
+	logger := log.FromContext(ctx)
+
 	// Lock cache for read operation
 	uoj.cacheMutex.RLock()
 	defer uoj.cacheMutex.RUnlock()
@@ -374,12 +376,16 @@ func (uoj *UserOffboardingJob) getUserDataFromCache(
 		var userDataMap map[string]string
 		userDataStr, ok := userData.(string)
 		if !ok {
-			return nil, "", fmt.Errorf("user data is not a string for userKey: %s", userKey)
+			// Log error and continue to next entry if this is an unexpected state
+			logger.Error(fmt.Errorf("user data is not a string"), "Invalid cache data type", "userKey", userKey, "email", email)
+			continue
 		}
 		if err := json.Unmarshal([]byte(userDataStr), &userDataMap); err != nil {
-			return nil, "", err
+			// Log error and continue to next entry if JSON is malformed
+			logger.Error(err, "Failed to unmarshal user data", "userKey", userKey, "email", email)
+			continue
 		}
-		// Assuming the first match is the correct one.
+		// Return the first valid match
 		return userDataMap, email, nil
 	}
 
